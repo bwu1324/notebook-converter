@@ -194,6 +194,7 @@ if __name__ == "__main__":
     args = get_merge_args(parser)
     if (args.save_config):
         with open(args.save_config, 'wb') as f:
+            args.save_config = None
             pickle.dump(args, f)
 
     if (args.config_file):
