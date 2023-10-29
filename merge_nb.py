@@ -7,6 +7,7 @@ import nbformat as nbf
 from nb2pdf import nb2pdf, nb2pdf_args
 from yaspin import yaspin
 
+
 class merge_args:
     def __init__(
         self,
@@ -101,13 +102,29 @@ def check_non_ascii(str: str):
             print(line)
 
 
+def sort_nicely(l: list):
+    # Sort the given list in the way that humans expect.
+    def tryint(s):
+        try:
+            return int(s)
+        except:
+            return s
+
+    def alphanum_key(s):
+        # Turn a string into a list of string and number chunks. "z23a" -> ["z", 23, "a"]
+        return [tryint(c) for c in re.split('([0-9]+)', s)]
+
+    l.sort(key=alphanum_key)
+    return l
+
+
 def main(args: merge_args):
     merged = nbf.v4.new_notebook()
     if (not args.no_gen_toc):
         merged['cells'].append(nbf.v4.new_markdown_cell(''))
     toc = '# ' + args.toc_title
 
-    for file in sorted(glob.glob(args.input_pattern)):
+    for file in sort_nicely(glob.glob(args.input_pattern)):
         if (os.path.normpath(file) == os.path.normpath(args.output_file)):
             continue
         print(f'Working on: {file}')
@@ -122,7 +139,7 @@ def main(args: merge_args):
             os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
         with open(args.output_file, 'w', encoding='utf-8') as f:
             nbf.write(nbf.validator.normalize(merged)[1], f)
-    
+
     nb2pdf(nb2pdf_args(args.output_file, False, True))
 
 
@@ -200,5 +217,5 @@ if __name__ == "__main__":
     if (args.config_file):
         with open(args.config_file, 'rb') as f:
             args = pickle.load(f)
-    
+
     main(args)
