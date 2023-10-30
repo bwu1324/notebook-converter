@@ -29,11 +29,8 @@ Scripts for merging and converting jupyter notebooks to html/pdf and generating 
 
 3. Run [pyinstaller](https://pyinstaller.org/) to generate executables
     ```bash
-    pyinstaller -F ./merge_nb.py --onedir --hidden-import notebook
-    ```
-    ```bash
-    pyinstaller -F ./nb2pdf.py --onedir --hidden-import notebook
+    pyinstaller notebook_converter.spec
     ```
 
-4. Executables can now be found in the `dist` folder. Run with the `--help` flag for usage
+4. Executables (`merge_nb` and `nb2pdf`) can now be found in the `dist/notebook_converter` folder. Run them with the `--help` flag for usage
 
