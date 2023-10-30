@@ -140,7 +140,7 @@ def main(args: merge_args):
         with open(args.output_file, 'w', encoding='utf-8') as f:
             nbf.write(nbf.validator.normalize(merged)[1], f)
 
-    nb2pdf(nb2pdf_args(args.output_file, False, True))
+    nb2pdf(nb2pdf_args(args.output_file, False, False))
 
 
 def appendCells(args: merge_args, cells: list, merged: nbf.NotebookNode, toc: str):

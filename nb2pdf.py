@@ -11,14 +11,14 @@ class nb2pdf_args:
         self,
         notebook: os.PathLike,
         save_html=False,
-        save_pdf=True
+        no_save_pdf=False
     ):
         self.notebook = notebook
         self.save_html = save_html
-        self.save_pdf = save_pdf
+        self.no_save_pdf = no_save_pdf
     notebook: os.PathLike
     save_html: bool
-    save_pdf: bool
+    no_save_pdf: bool
 
 
 def nb2pdf(args: nb2pdf_args):
@@ -39,6 +39,14 @@ def nb2pdf(args: nb2pdf_args):
 
     exporter = HTMLExporter()
     html_data, _ = exporter.from_notebook_node(nb)
+    html_data = html_data.replace('<head>', '''
+<head>
+<style>
+  .jp-InputPrompt {
+    display: none !important;
+  }
+</style>
+''')
 
     with open(html_output, "w") as f:
         f.write(html_data)
@@ -46,7 +54,7 @@ def nb2pdf(args: nb2pdf_args):
         print(f'HTML File saved at {html_output}')
 
     # Create PDF
-    if (args.save_pdf):
+    if (not args.no_save_pdf):
         with yaspin(text='Generating PDF'):
             with sync_playwright() as p:
                 browser = p.chromium.launch()
@@ -77,7 +85,7 @@ if __name__ == '__main__':
         action='store_true',
     )
     parser.add_argument(
-        '--save_pdf',  '--pdf',
+        '--no_save_pdf',  '--no_pdf',
         help='Save pdf version of notebook',
         action='store_true',
     )
