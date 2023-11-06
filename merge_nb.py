@@ -38,11 +38,8 @@ class merge_args:
     save_config: str
 
 
-# Initial link id
-link_id_counter = 0
-
-
 def get_merge_args(parser: argparse.ArgumentParser) -> merge_args:
+    # Parses command line arguments for program arguments
     parser.add_argument(
         'config_file',
         nargs='?',
@@ -84,16 +81,70 @@ def get_merge_args(parser: argparse.ArgumentParser) -> merge_args:
         help='Location to save configuration to. Should not be used with config_file argument'
 
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Save config if needed
+    if (args.save_config):
+        with open(args.save_config, 'wb') as f:
+            args.save_config = None
+            pickle.dump(args, f)
+
+    # Load config if needed
+    if (args.config_file):
+        with open(args.config_file, 'rb') as f:
+            args = pickle.load(f)
+
+    return args
+
+
+# Initial link id
+link_id_counter = 0
+
+
+def main(args: merge_args):
+    merged = nbf.v4.new_notebook()
+    cells = []
+    toc = [nbf.v4.new_markdown_cell('# ' + args.toc_title)]
+
+    for file in sort_nicely(glob.glob(args.input_pattern)):
+        if (os.path.normpath(file) == os.path.normpath(args.output_file)):
+            continue
+        print(f'Working on: {file}')
+
+        parsed_cells, toc_cell = readFile(args, file)
+        cells.extend(parsed_cells)
+        toc.append(toc_cell)
+
+    if (not args.no_gen_toc):
+        toc.append(
+            nbf.v4.new_markdown_cell(
+                '<hr/>\n<p style="page-break-after:always;"></p>'
+            )
+        )
+        toc.extend(cells)
+        cells = toc
+
+    merged['cells'] = cells
+
+    # Create notebook
+    with yaspin(text='Generating Notebook'):
+        if (os.path.dirname(args.output_file) != ''):
+            os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
+        with open(args.output_file, 'w', encoding='utf-8') as f:
+            nbf.write(nbf.validator.normalize(merged)[1], f)
+
+    nb2pdf(nb2pdf_args(args.output_file, False, False))
 
 
 def getNewLinkId():
+    # Get a new unique Id for links
     global link_id_counter
     link_id_counter += 1
     return link_id_counter
 
 
 def check_non_ascii(str: str):
+    # Checks for non ascii characters and prints a warning if found
     for line in str.splitlines():
         try:
             line.encode('utf-8').decode('ascii')
@@ -118,40 +169,25 @@ def sort_nicely(l: list):
     return l
 
 
-def main(args: merge_args):
-    merged = nbf.v4.new_notebook()
-    if (not args.no_gen_toc):
-        merged['cells'].append(nbf.v4.new_markdown_cell(''))
-    toc = '# ' + args.toc_title
-
-    for file in sort_nicely(glob.glob(args.input_pattern)):
-        if (os.path.normpath(file) == os.path.normpath(args.output_file)):
-            continue
-        print(f'Working on: {file}')
-        toc = readFile(args, file, merged, toc)
-
-    if (not args.no_gen_toc):
-        merged['cells'][0]['source'] = toc
-
-    # Create notebook
-    with yaspin(text='Generating Notebook'):
-        if (os.path.dirname(args.output_file) != ''):
-            os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
-        with open(args.output_file, 'w', encoding='utf-8') as f:
-            nbf.write(nbf.validator.normalize(merged)[1], f)
-
-    nb2pdf(nb2pdf_args(args.output_file, False, False))
-
-
-def appendCells(args: merge_args, cells: list, merged: nbf.NotebookNode, toc: str):
-    if (len(merged['cells']) > 0):
-        merged['cells'].append(
-            nbf.v4.new_markdown_cell(
-                '<hr/>\n<p style="page-break-after:always;"></p>')
-        )
+def parseCells(args: merge_args, cells: list) -> tuple[list, str]:
+    # Parse list of cells for TOC and other things
+    # Returns list of parsed cells and TOC subheaders as a str
+    toc = ''
+    output_cells = []
 
     for cell in cells:
         check_non_ascii(cell['source'])
+
+        if (cell['cell_type'].lower() == 'code'):
+            new_cell = nbf.v4.new_code_cell(cell['source'])
+            new_cell['outputs'] = cell['outputs']
+            output_cells.append(new_cell)
+
+        if (cell['cell_type'].lower() == 'raw'):
+            output_cells.append(
+                nbf.v4.new_raw_cell(cell['source'])
+            )
+
         if (cell['cell_type'].lower() == 'markdown'):
             match = re.match(args.toc_subheader_pattern, cell['source'])
             if (match):
@@ -161,46 +197,48 @@ def appendCells(args: merge_args, cells: list, merged: nbf.NotebookNode, toc: st
                 index = getNewLinkId()
                 toc += f'\n\t* [{sub_header}](#{index})'
                 source[0] += f'<a class="anchor" id="{index}"></a>'
-                merged['cells'].append(
+                output_cells.append(
                     nbf.v4.new_markdown_cell('\n'.join(source))
                 )
             else:
-                merged['cells'].append(
+                output_cells.append(
                     nbf.v4.new_markdown_cell(cell['source'])
                 )
 
-        if (cell['cell_type'].lower() == 'code'):
-            new_cell = nbf.v4.new_code_cell(cell['source'])
-            new_cell['outputs'] = cell['outputs']
-            merged['cells'].append(new_cell)
-
-        if (cell['cell_type'].lower() == 'raw'):
-            merged['cells'].append(
-                nbf.v4.new_raw_cell(cell['source'])
-            )
-
-    return toc
+    return output_cells, toc
 
 
-def readFile(args: merge_args, file: os.PathLike, merged: nbf.NotebookNode, toc: str) -> str:
+def readFile(args: merge_args, file: os.PathLike) -> tuple[list[nbf.NotebookNode], nbf.NotebookNode]:
+    # Reads a notebook file and parses TOC cell
+    # Returns list of parsed cells and TOC cell as NotebookNode
     nb = nbf.read(file, as_version=4)
     if (len(nb['cells']) == 0):
         print('No cells found, ignoring')
         return toc
 
+    # Skip file if no header found
     match = re.match(args.toc_header_pattern, nb['cells'][0]['source'])
     if (match == None):
         print('No matching header found, ignoring file')
         return toc
 
+    # Setup TOC cell
     index = getNewLinkId()
     title = nb['cells'][0]['source'].replace(match.group(), '')
-    toc += f'\n* **[{title}](#{index})**'
+    toc = f'* **[{title}](#{index})**'
     nb['cells'][0]['source'] += f'<a class="anchor" id="{index}"></a>'
 
-    toc = appendCells(args, nb['cells'], merged, toc)
-    merged['metadata'] = nb['metadata']
-    return toc
+    # Parse cells and TOC
+    cells, toc_subheaders = parseCells(args, nb['cells'])
+    toc += toc_subheaders
+
+    # Add page-break after file cells
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            '<hr/>\n<p style="page-break-after:always;"></p>')
+    )
+
+    return cells, nbf.v4.new_markdown_cell(toc)
 
 
 if __name__ == "__main__":
@@ -208,14 +246,4 @@ if __name__ == "__main__":
         prog='merge_nb',
         description='Merges a set of jupyter notebooks '
     )
-    args = get_merge_args(parser)
-    if (args.save_config):
-        with open(args.save_config, 'wb') as f:
-            args.save_config = None
-            pickle.dump(args, f)
-
-    if (args.config_file):
-        with open(args.config_file, 'rb') as f:
-            args = pickle.load(f)
-
-    main(args)
+    main(get_merge_args(parser))
