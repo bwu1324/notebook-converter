@@ -21,6 +21,30 @@ class nb2pdf_args:
     no_save_pdf: bool
 
 
+add_style = '''
+<style>
+    .jp-InputPrompt {
+        display: none !important;
+    }
+
+    .jp-Notebook-cell {
+        break-inside: avoid !important;
+    }
+</style>
+'''
+add_js = '''
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Queue(function () {
+        document.getElementById('mathjax-loading-indicator').style.display = 'none';
+    });
+</script>
+'''
+add_div = '''
+<main>
+<div style="width: 100%; background-color: red; color: white; font-size: 12px; padding: 5px;" id="mathjax-loading-indicator">MathJax Is Loading...</div>
+'''
+
+
 def nb2pdf(args: nb2pdf_args):
     directory = os.path.dirname(os.path.abspath(args.notebook))
     filename, _ = os.path.splitext(os.path.basename(args.notebook))
@@ -37,30 +61,13 @@ def nb2pdf(args: nb2pdf_args):
     if (args.save_html):
         print('Generating HTML')
 
+    # Add HTML tweaks
     exporter = HTMLExporter()
     html_data, _ = exporter.from_notebook_node(nb)
-    html_data = html_data.replace('<head>', '''
-<head>
-<style>
-    .jp-InputPrompt {
-        display: none !important;
-    }
+    html_data = html_data.replace('<head>', f'<head>\n{add_style}\n{add_js}')
+    html_data = html_data.replace('<main>', f'<main>\n{add_div}')
 
-    .jp-Notebook-cell {
-        break-inside: avoid !important;
-    }
-</style>
-<script type="text/x-mathjax-config">
-    MathJax.Hub.Queue(function () {
-        document.getElementById('mathjax-loading-indicator').style.display = 'none';
-    });
-</script>
-''')
-    html_data = html_data.replace('<main>', '''
-<main>
-<div style="width: 100%; background-color: red; color: white; font-size: 12px; padding: 5px;" id="mathjax-loading-indicator">MathJax Is Loading...</div>
-''')
-
+    # Save HTML
     with open(html_output, "w") as f:
         f.write(html_data)
     if (args.save_html):
@@ -73,9 +80,11 @@ def nb2pdf(args: nb2pdf_args):
                 browser = p.chromium.launch()
                 page = browser.new_page()
                 page.goto(f'file://{html_output}')
-                page.wait_for_selector('id=mathjax-loading-indicator', state="hidden")
+                page.wait_for_selector(
+                    'id=mathjax-loading-indicator', state="hidden")
                 page.emulate_media(media="screen")
-                page.pdf(path=pdf_output)
+                page.pdf(path=pdf_output,
+                         footer_template="<div class='pageNumber'></div>")
                 browser.close()
         print(f'PDF saved at {pdf_output}')
 
