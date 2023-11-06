@@ -42,10 +42,23 @@ def nb2pdf(args: nb2pdf_args):
     html_data = html_data.replace('<head>', '''
 <head>
 <style>
-  .jp-InputPrompt {
-    display: none !important;
-  }
+    .jp-InputPrompt {
+        display: none !important;
+    }
+
+    .jp-Notebook-cell {
+        break-inside: avoid !important;
+    }
 </style>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Queue(function () {
+        document.getElementById('mathjax-loading-indicator').style.display = 'none';
+    });
+</script>
+''')
+    html_data = html_data.replace('<main>', '''
+<main>
+<div style="width: 100%; background-color: red; color: white; font-size: 12px; padding: 5px;" id="mathjax-loading-indicator">MathJax Is Loading...</div>
 ''')
 
     with open(html_output, "w") as f:
@@ -55,13 +68,12 @@ def nb2pdf(args: nb2pdf_args):
 
     # Create PDF
     if (not args.no_save_pdf):
-        with yaspin(text='Generating PDF'):
+        with yaspin(text='Generating PDF') as spinner:
             with sync_playwright() as p:
                 browser = p.chromium.launch()
                 page = browser.new_page()
                 page.goto(f'file://{html_output}')
-                page.wait_for_selector('id=MathJax_Message', state="hidden")
-                time.sleep(3)
+                page.wait_for_selector('id=mathjax-loading-indicator', state="hidden")
                 page.emulate_media(media="screen")
                 page.pdf(path=pdf_output)
                 browser.close()
