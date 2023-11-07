@@ -82,6 +82,7 @@ def nb2pdf(args: nb2pdf_args):
                 page.goto(f'file://{html_output}')
                 page.wait_for_selector(
                     'id=mathjax-loading-indicator', state="hidden")
+                page.wait_for_selector('id=MathJax_Message', state="hidden")
                 page.emulate_media(media="screen")
                 page.pdf(path=pdf_output,
                          footer_template="<div class='pageNumber'></div>")
