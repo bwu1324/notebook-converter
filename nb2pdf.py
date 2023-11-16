@@ -30,6 +30,10 @@ add_style = '''
     .jp-Notebook-cell {
         break-inside: avoid !important;
     }
+
+    .jp-RenderedHTMLCommon table {
+        margin-left: 0 !important;
+    }
 </style>
 '''
 add_js = '''
